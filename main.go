@@ -18,6 +18,8 @@
 
 package main
 
+//go:generate goversioninfo -64 -icon=icon/ass2sup_ico.ico
+
 import (
 	"fmt"
 	"os"
@@ -32,7 +34,7 @@ import (
 
 const (
 	appName    = "ass2sup"
-	appVersion = "1.0.0"
+	appVersion = "1.0.1"
 )
 
 func main() {

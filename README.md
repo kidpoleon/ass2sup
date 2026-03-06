@@ -1,6 +1,10 @@
 # ass2sup
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/kidpoleon/ass2sup/releases)
+<p align="center">
+  <img src="icon/ass2sup_png.png" alt="ass2sup icon" width="128" height="128">
+</p>
+
+[![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)](https://github.com/kidpoleon/ass2sup/releases)
 [![Go Version](https://img.shields.io/badge/go-1.21+-00ADD8.svg)](https://golang.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](https://github.com/kidpoleon/ass2sup/releases)
