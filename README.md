@@ -18,7 +18,7 @@
 ## Features
 
 - **Self-Contained** — embeds Spp2Pgs and its required DLLs; no side-by-side installation needed
-- **TUI Prompt** — a clean terminal form asks for the source directory at launch; no drag-and-drop required
+- **TUI Prompt** — a clean terminal form asks for the source directory at launch
 - **Recursive Scan** — walks the full directory tree and matches video/subtitle pairs folder-by-folder
 - **Smart Matching** — pairs files by episode number (`S01E01`, `1x01`, `Episode N`) or name similarity
 - **16 Parallel Workers** — up to 16 Spp2Pgs processes run simultaneously; parallel ffprobe during scan
@@ -27,20 +27,80 @@
 - **Proper Timing** — total time and per-file average shown in the summary
 - **Graceful Shutdown** — Ctrl-C cancels queued work cleanly
 
+---
+
 ## Requirements
 
-| Requirement | Notes |
+| Requirement | Details |
 |---|---|
-| Windows 10/11 (64-bit) | Spp2Pgs.exe and xy-VSSppf.dll are Windows PE binaries |
-| ffprobe in PATH | Part of the FFmpeg suite — [download here](https://ffmpeg.org/download.html) |
+| **Windows 10/11** (64-bit) | Spp2Pgs.exe and xy-VSSppf.dll are Windows PE binaries |
+| **ffprobe** in PATH | Part of the FFmpeg suite — see installation guide below |
 
-> Only `ffprobe` is needed from FFmpeg; `ffmpeg` itself is not required.
+> Only `ffprobe` is needed from FFmpeg; the full `ffmpeg` encoder is not required.
+
+---
+
+## Installing FFmpeg (ffprobe)
+
+Choose any one method. After installation, open a new terminal and verify with `ffprobe -version`.
+
+### Option 1 — winget (built into Windows 10/11)
+
+```powershell
+winget install -e --id Gyan.FFmpeg
+```
+
+`ffprobe` will be on your PATH automatically after the install completes.
+
+---
+
+### Option 2 — Chocolatey
+
+> Install Chocolatey first if you don't have it: https://chocolatey.org/install
+
+```powershell
+choco install ffmpeg -y
+```
+
+---
+
+### Option 3 — Scoop
+
+> Install Scoop first if you don't have it: https://scoop.sh
+
+```powershell
+scoop install ffmpeg
+```
+
+---
+
+### Option 4 — Manual (no package manager)
+
+1. Go to **https://ffmpeg.org/download.html** → click **Windows** → choose the **gyan.dev** or **BtbN** build
+2. Download the **essentials** or **full** build (`.zip` or `.7z`)
+3. Extract the archive — you will find a `bin\` folder containing `ffprobe.exe`
+4. Add that `bin\` folder to your system PATH:
+   - Press **Win + S** → search **"Edit the system environment variables"** → open it
+   - Click **Environment Variables…**
+   - Under **System variables**, select **Path** → click **Edit**
+   - Click **New** and paste the full path to the `bin\` folder (e.g. `C:\ffmpeg\bin`)
+   - Click **OK** on all dialogs
+5. Open a **new** PowerShell or Command Prompt window and run:
+
+```powershell
+ffprobe -version
+```
+
+You should see version output. If you see `'ffprobe' is not recognized`, the `bin\` folder is not in PATH — repeat step 4.
+
+---
 
 ## Usage
 
-1. Run `ass2sup.exe`
-2. A TUI prompt appears — type or paste the path to your media folder
-3. The program recursively scans for video + `.ass` pairs, extracts metadata, converts, and reports
+1. Download `ass2sup.exe` from the [Releases](https://github.com/kidpoleon/ass2sup/releases) page
+2. Run `ass2sup.exe`
+3. A TUI prompt appears — type or paste the path to your media folder
+4. The program recursively scans for video + `.ass` pairs, extracts metadata, converts, and reports
 
 ```
 ╭─────────────────────────────────╮
@@ -68,6 +128,8 @@
 │  ✓ All conversions completed successfully!  │
 ╰─────────────────────────────────────────────╯
 ```
+
+---
 
 ## How It Works
 
@@ -103,9 +165,10 @@ Resolution mapping:
 
 Frame-rate mapping: `23.976→23` · `24→24` · `25→25` · `29.97→29` · `30→30` · `50→50` · `59.94→59` · `60→60`
 
-Spp2Pgs runs with `-v127` (errors and warnings only) to reduce subprocess I/O overhead.
+Spp2Pgs runs with `-v127` (errors and warnings only) to reduce subprocess I/O overhead.  
+Success is determined by output file existence — Spp2Pgs exits 1 even on success.
 
-Success is determined by output file existence, not exit code — Spp2Pgs exits 1 even on success.
+---
 
 ## Supported Formats
 
@@ -114,6 +177,8 @@ Success is determined by output file existence, not exit code — Spp2Pgs exits 
 **Subtitle input:** `.ass`
 
 **Output:** `.sup` (Blu-ray PGS / HDMV PG stream)
+
+---
 
 ## Architecture
 
@@ -134,18 +199,20 @@ ass2sup/
     └── file.go          # Extension checks, episode-number extraction, match scoring
 ```
 
+---
+
 ## Building from Source
 
 ### Requirements
 
 - Go 1.22+
 - Windows (build target)
-- [`goversioninfo`](https://github.com/josephspurrier/goversioninfo) for embedding the icon and PE version info (optional — `resource.syso` is committed)
+- [`goversioninfo`](https://github.com/josephspurrier/goversioninfo) for regenerating the icon resource (optional — `resource.syso` is committed)
 - The four Spp2Pgs binaries in `embed/` (see below)
 
 ### Obtaining the Spp2Pgs binaries
 
-Download [`160506.EXE.Spp2Pgs.0_9_3_7.7z`](https://github.com/subelf/Spp2Pgs/releases/tag/0.9.3.7) from the Spp2Pgs releases and extract:
+Download [`160506.EXE.Spp2Pgs.0_9_3_7.7z`](https://github.com/subelf/Spp2Pgs/releases/tag/0.9.3.7) and extract into `embed/`:
 
 ```
 Spp2Pgs.exe      → embed/Spp2Pgs.exe
@@ -156,25 +223,19 @@ xy-VSSppf64.dll  → embed/xy-VSSppf64.dll
 
 ### Build
 
-```bash
+```powershell
 go build -o ass2sup.exe .
 ```
 
 ### Regenerate icon / version info (optional)
 
-```bash
+```powershell
 go install github.com/josephspurrier/goversioninfo/cmd/goversioninfo@latest
 go generate
 go build -o ass2sup.exe .
 ```
 
-### Dependencies
-
-```bash
-go get github.com/charmbracelet/huh
-go get github.com/charmbracelet/lipgloss
-go get github.com/schollz/progressbar/v3
-```
+---
 
 ## License
 
@@ -182,7 +243,7 @@ go get github.com/schollz/progressbar/v3
 
 ### Credits & Attribution
 
-- **[subelf/Spp2Pgs](https://github.com/subelf/Spp2Pgs)** (GPL-3.0) — the subtitle conversion engine that does all the heavy lifting
+- **[subelf/Spp2Pgs](https://github.com/subelf/Spp2Pgs)** (GPL-3.0) — the subtitle conversion engine
   - Based on [avs2bdnxml](http://www.ps-auxw.de/avs2bdnxml/) and [xy-VSFilter](https://github.com/Cyberbeing/xy-VSFilter)
 - **[charmbracelet/huh](https://github.com/charmbracelet/huh)** — TUI form library
 - **[charmbracelet/lipgloss](https://github.com/charmbracelet/lipgloss)** — terminal styling
