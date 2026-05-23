@@ -1,5 +1,8 @@
+//go:build windows
+
 // Package embed provides embedded Spp2Pgs binaries for self-contained operation.
 // The binaries are extracted to a temporary directory at runtime and cleaned up on exit.
+// This package is Windows-only: it embeds Windows PE executables and DLLs.
 package embed
 
 import (
@@ -16,8 +19,8 @@ var embeddedFiles embed.FS
 
 // ExtractedBinaries holds paths to extracted Spp2Pgs executables
 type ExtractedBinaries struct {
-	Spp2PgsPath    string
-	TempDir        string
+	Spp2PgsPath string
+	TempDir     string
 }
 
 // Extract extracts the appropriate Spp2Pgs binary and its DLL to a temp directory.

@@ -1,30 +1,34 @@
-// ass2sup - A self-contained ASS to PGS subtitle converter
-// This program automatically converts .ass subtitle files to .sup (Blu-ray PGS) format
-// when placed in a media folder alongside video files.
+//go:build windows
+
+// ass2sup - A self-contained ASS to PGS subtitle converter for Windows.
 //
 // Usage:
-//   Simply drag and drop ass2sup.exe into any folder containing video files
-//   and matching .ass subtitle files, then double-click to run.
 //
-// Features:
-//   - Self-contained: Embeds Spp2Pgs and required DLLs
-//   - Auto-detection: Finds video/subtitle pairs automatically
-//   - Parallel processing: Converts multiple files concurrently
-//   - Progress tracking: Real-time progress bars for each conversion
-//   - Video metadata: Uses ffprobe to detect resolution and frame rate
+//	Run ass2sup.exe. A TUI prompt will ask for the source directory.
+//	The program scans that directory recursively, pairs every video file
+//	with its matching .ass subtitle, and converts them all to .sup
+//	(Blu-ray PGS) format using the embedded Spp2Pgs converter.
 //
-// Author: Cascade
+// Requirements:
+//
+//	ffprobe must be available in PATH (part of the FFmpeg suite).
+//	Download: https://ffmpeg.org/download.html
+//
+// Author: kidpoleon
 // License: MIT
-
 package main
 
 //go:generate goversioninfo -64 -icon=icon/ass2sup_ico.ico
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+
+	"github.com/charmbracelet/huh"
 
 	"ass2sup/controller"
 	"ass2sup/embed"
@@ -34,15 +38,15 @@ import (
 
 const (
 	appName    = "ass2sup"
-	appVersion = "1.0.1"
+	appVersion = "2.0.0"
 )
 
 func main() {
-	// Print banner
 	view.PrintBanner(appName, appVersion)
 
-	// Extract embedded Spp2Pgs binaries
-	view.PrintInfo("Extracting embedded converter...")
+	// Extract the embedded Spp2Pgs binaries to a temp directory.
+	// They are cleaned up via defer when main returns.
+	view.PrintInfo("Extracting converter...")
 	binaries, err := embed.Extract()
 	if err != nil {
 		view.PrintError(fmt.Sprintf("Failed to extract binaries: %v", err))
@@ -50,17 +54,9 @@ func main() {
 		os.Exit(1)
 	}
 	defer binaries.Cleanup()
-	view.PrintSuccess("Converter ready")
+	view.PrintSuccess("Ready")
 
-	// Get working directory (where the exe was launched from)
-	workDir, err := os.Getwd()
-	if err != nil {
-		view.PrintError(fmt.Sprintf("Failed to get working directory: %v", err))
-		waitForExit()
-		os.Exit(1)
-	}
-
-	// Check if ffprobe is available
+	// ffprobe must be on PATH for video metadata extraction.
 	if !controller.IsFFprobeAvailable() {
 		view.PrintError("ffprobe not found in PATH")
 		view.PrintInfo("Please install FFmpeg and ensure ffprobe is in your system PATH")
@@ -69,39 +65,92 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Setup signal handling for graceful shutdown
+	// Show the TUI and ask the user where their media lives.
+	sourceDir, err := promptSourceDirectory()
+	if err != nil {
+		if errors.Is(err, huh.ErrUserAborted) {
+			fmt.Println("\nCancelled.")
+			os.Exit(0)
+		}
+		view.PrintError(fmt.Sprintf("Input error: %v", err))
+		waitForExit()
+		os.Exit(1)
+	}
+
+	// Graceful shutdown on Ctrl-C / SIGTERM.
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// Create converter with default settings
-	config := &model.Config{
-		Directory:   workDir,
+	cfg := &model.Config{
+		Directory:   sourceDir,
 		Spp2PgsPath: binaries.Spp2PgsPath,
-		Workers:     0, // Auto-detect based on CPU
+		Workers:     0, // 0 → auto → 16 (see controller)
 		DryRun:      false,
 		Verbose:     true,
 	}
 
-	// Create controller
-	ctrl := controller.NewConverterController(config)
+	ctrl := controller.NewConverterController(cfg)
 
-	// Handle interrupt signals
 	go func() {
 		<-sigChan
 		view.PrintWarning("\nInterrupted! Shutting down gracefully...")
 		ctrl.Shutdown()
 	}()
 
-	// Run conversion
-	view.PrintInfo(fmt.Sprintf("Scanning directory: %s", workDir))
+	view.PrintInfo(fmt.Sprintf("Scanning recursively: %s", sourceDir))
 	if err := ctrl.Run(); err != nil {
 		view.PrintError(fmt.Sprintf("Conversion failed: %v", err))
 		waitForExit()
 		os.Exit(1)
 	}
 
-	// Success - wait for user input before closing (when double-clicked)
 	waitForExit()
+}
+
+// promptSourceDirectory renders a charmbracelet/huh TUI form that asks the
+// user to type the path to the folder they want to process. The path is
+// validated before the form closes: it must exist and be a directory.
+func promptSourceDirectory() (string, error) {
+	var dir string
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Source Directory").
+				Description("Path to folder with video files and .ass subtitles (searched recursively)").
+				Placeholder(`C:\Videos`).
+				Value(&dir).
+				Validate(func(s string) error {
+					s = cleanPath(s)
+					if s == "" {
+						return fmt.Errorf("path cannot be empty")
+					}
+					info, err := os.Stat(s)
+					if err != nil {
+						return fmt.Errorf("cannot access directory: %v", err)
+					}
+					if !info.IsDir() {
+						return fmt.Errorf("path is not a directory")
+					}
+					return nil
+				}),
+		),
+	).WithTheme(huh.ThemeCharm()).WithWidth(64)
+
+	if err := form.Run(); err != nil {
+		return "", err
+	}
+
+	fmt.Println() // ensure a clean newline after the form closes
+	return cleanPath(dir), nil
+}
+
+// cleanPath strips surrounding whitespace and stray quotes that Windows
+// Explorer sometimes adds when a user drags a path into the terminal.
+func cleanPath(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.Trim(s, `"'`)
+	return strings.TrimSpace(s)
 }
 
 func waitForExit() {

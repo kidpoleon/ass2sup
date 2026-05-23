@@ -34,14 +34,14 @@ const (
 type Spp2PgsFormat int
 
 const (
-	Format480i  Spp2PgsFormat = 1  // 480i
-	Format576i  Spp2PgsFormat = 2  // 576i
-	Format480p  Spp2PgsFormat = 3  // 480p
-	Format1080i Spp2PgsFormat = 4  // 1080i
-	Format720p  Spp2PgsFormat = 5  // 720p
-	Format1080p Spp2PgsFormat = 6  // 1080p
-	Format576p  Spp2PgsFormat = 7  // 576p
-	Format4K    Spp2PgsFormat = 6  // 4K uses 1080p code (tool limitation)
+	Format480i  Spp2PgsFormat = 1 // 480i
+	Format576i  Spp2PgsFormat = 2 // 576i
+	Format480p  Spp2PgsFormat = 3 // 480p
+	Format1080i Spp2PgsFormat = 4 // 1080i
+	Format720p  Spp2PgsFormat = 5 // 720p
+	Format1080p Spp2PgsFormat = 6 // 1080p
+	Format576p  Spp2PgsFormat = 7 // 576p
+	Format4K    Spp2PgsFormat = 6 // 4K uses 1080p code (tool limitation)
 )
 
 // NewSpp2PgsService creates a new Spp2PgsService
@@ -56,7 +56,7 @@ func NewSpp2PgsService(spp2pgsPath string) *Spp2PgsService {
 func (s *Spp2PgsService) Convert(ctx context.Context, pair *model.SubtitlePair, dryRun bool) error {
 	// Determine format value (resolution) from video resolution
 	formatValue := s.determineFormatValue(pair.Metadata.Height)
-	
+
 	// Determine rate value from frame rate
 	rateValue := s.determineRateValue(pair.Metadata.FrameRate)
 
@@ -82,38 +82,39 @@ func (s *Spp2PgsService) Convert(ctx context.Context, pair *model.SubtitlePair, 
 
 	// Build command - run from Spp2Pgs directory so DLLs are found
 	exeDir := filepath.Dir(absSpp2pgsPath)
-	
+
 	cmd := exec.CommandContext(
 		ctx,
 		absSpp2pgsPath,
 		"-i", pair.SubtitlePath,
 		"-s", formatValue,
 		"-r", rateValue,
+		"-v127", // suppress Spp2Pgs info output; show only errors and warnings
 		pair.OutputPath,
 	)
 	cmd.Dir = exeDir // Set working directory to Spp2Pgs location for DLLs
 
 	// Run conversion
 	output, err := cmd.CombinedOutput()
-	
+
 	// Spp2Pgs returns exit code 1 even on success - check if output file was created
 	if _, statErr := os.Stat(pair.OutputPath); statErr == nil {
 		// File exists, conversion succeeded
 		return nil
 	}
-	
+
 	// Output file not found, conversion failed
 	if err != nil {
 		return fmt.Errorf("spp2pgs conversion failed: %w\nOutput: %s", err, string(output))
 	}
-	
+
 	return fmt.Errorf("conversion completed but output file not found: %s", pair.OutputPath)
 }
 
 // ConvertWithProgress converts with timeout and progress tracking
 func (s *Spp2PgsService) ConvertWithProgress(pair *model.SubtitlePair, timeout time.Duration, dryRun bool) (*model.ConversionResult, error) {
 	start := time.Now()
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -125,7 +126,7 @@ func (s *Spp2PgsService) ConvertWithProgress(pair *model.SubtitlePair, timeout t
 
 	err := s.Convert(ctx, pair, dryRun)
 	result.Duration = time.Since(start).Seconds()
-	
+
 	if err != nil {
 		result.Error = err
 		return result, err

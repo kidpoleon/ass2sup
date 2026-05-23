@@ -1,165 +1,209 @@
+// Package view provides console output helpers for ass2sup, styled with the
+// Charm lipgloss library to match the huh TUI form's visual identity.
 package view
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
+	"time"
 
-	"github.com/fatih/color"
+	"github.com/charmbracelet/lipgloss"
+
 	"ass2sup/model"
 )
 
-// ConsoleView handles all console output
-type ConsoleView struct {
-	infoColor    *color.Color
-	successColor *color.Color
-	errorColor   *color.Color
-	warnColor    *color.Color
-	headerColor  *color.Color
-}
+// ── Charm-theme palette (mirrors huh.ThemeCharm exactly) ────────────────────
 
-// package-level colors for global functions
 var (
-	pkgInfoColor    = color.New(color.FgCyan)
-	pkgSuccessColor = color.New(color.FgGreen)
-	pkgErrorColor   = color.New(color.FgRed)
-	pkgWarnColor    = color.New(color.FgYellow)
-	pkgHeaderColor  = color.New(color.FgWhite, color.Bold)
+	colIndigo  = lipgloss.AdaptiveColor{Light: "#5A56E0", Dark: "#7571F9"}
+	colGreen   = lipgloss.AdaptiveColor{Light: "#02BA84", Dark: "#02BF87"}
+	colRed     = lipgloss.AdaptiveColor{Light: "#FF4672", Dark: "#ED567A"}
+	colYellow  = lipgloss.AdaptiveColor{Light: "#F1A623", Dark: "#F1A623"}
+	colFuchsia = lipgloss.AdaptiveColor{Light: "#EE6FF8", Dark: "#EE6FF8"} //nolint:unused
+	colMuted   = lipgloss.AdaptiveColor{Light: "#747474", Dark: "#8A8A8A"}
 )
 
-// PrintBanner displays the application banner with version info
-func PrintBanner(name, version string) {
-	fmt.Println()
-	pkgHeaderColor.Println("╔══════════════════════════════════════════════════════════╗")
-	pkgHeaderColor.Printf("║  %-56s║\n", name+" v"+version)
-	pkgHeaderColor.Println("║  ASS to PGS Subtitle Converter                           ║")
-	pkgHeaderColor.Println("╚══════════════════════════════════════════════════════════╝")
-	fmt.Println()
-}
+// ── Shared styles ────────────────────────────────────────────────────────────
 
-// PrintInfo displays an informational message
-func PrintInfo(message string) {
-	pkgInfoColor.Println("ℹ " + message)
-}
+var (
+	styleInfo    = lipgloss.NewStyle().Foreground(colIndigo)
+	styleSuccess = lipgloss.NewStyle().Foreground(colGreen)
+	styleError   = lipgloss.NewStyle().Foreground(colRed)
+	styleWarn    = lipgloss.NewStyle().Foreground(colYellow)
+	styleMuted   = lipgloss.NewStyle().Foreground(colMuted)
+	styleBold    = lipgloss.NewStyle().Bold(true)
 
-// PrintSuccess displays a success message
-func PrintSuccess(message string) {
-	pkgSuccessColor.Println("✓ " + message)
-}
+	// Rounded box with an indigo border — used for the banner and summary.
+	styleIndigoBox = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colIndigo).
+			Padding(0, 2)
 
-// PrintError displays an error message
-func PrintError(message string) {
-	pkgErrorColor.Println("✗ " + message)
-}
+	// Rounded box with a muted border — used for ShowPair (dry-run mode).
+	styleMutedBox = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colMuted).
+			Padding(0, 1)
+)
 
-// PrintWarning displays a warning message
-func PrintWarning(message string) {
-	pkgWarnColor.Println("⚠ " + message)
-}
+// ── fmtDuration ──────────────────────────────────────────────────────────────
 
-// NewConsoleView creates a new ConsoleView with colored output
-func NewConsoleView() *ConsoleView {
-	return &ConsoleView{
-		infoColor:    color.New(color.FgCyan),
-		successColor: color.New(color.FgGreen),
-		errorColor:   color.New(color.FgRed),
-		warnColor:    color.New(color.FgYellow),
-		headerColor:  color.New(color.FgWhite, color.Bold),
+// fmtDuration formats a time.Duration as a compact human-readable string:
+//   - >= 1 minute  → "5m 23s"
+//   - >= 1 second  → "45s" or "1.2s"
+//   - < 1 second   → "120ms"
+func fmtDuration(d time.Duration) string {
+	switch {
+	case d >= time.Minute:
+		m := int(d.Minutes())
+		s := int(d.Seconds()) % 60
+		return fmt.Sprintf("%dm %ds", m, s)
+	case d >= time.Second:
+		if d%time.Second == 0 {
+			return fmt.Sprintf("%ds", int(d.Seconds()))
+		}
+		return fmt.Sprintf("%.1fs", d.Seconds())
+	default:
+		return fmt.Sprintf("%dms", d.Milliseconds())
 	}
 }
 
-// ShowInfo displays an informational message
+// ── Package-level functions ───────────────────────────────────────────────────
+
+// PrintBanner displays the application banner inside a rounded indigo-bordered
+// box.
+func PrintBanner(name, version string) {
+	title := styleBold.Render(name + " v" + version)
+	sub := styleMuted.Render("ASS to PGS Subtitle Converter")
+	fmt.Println()
+	fmt.Println(styleIndigoBox.Render(title + "\n" + sub))
+	fmt.Println()
+}
+
+// PrintInfo displays an informational message on stdout.
+func PrintInfo(message string) {
+	fmt.Println(styleInfo.Render("ℹ " + message))
+}
+
+// PrintSuccess displays a success message on stdout.
+func PrintSuccess(message string) {
+	fmt.Println(styleSuccess.Render("✓ " + message))
+}
+
+// PrintError displays an error message on stderr.
+func PrintError(message string) {
+	fmt.Fprintln(os.Stderr, styleError.Render("✗ "+message))
+}
+
+// PrintWarning displays a warning message on stdout.
+func PrintWarning(message string) {
+	fmt.Println(styleWarn.Render("⚠ " + message))
+}
+
+// ── ConsoleView ───────────────────────────────────────────────────────────────
+
+// ConsoleView handles all console output. All methods are safe to call
+// concurrently from multiple goroutines.
+type ConsoleView struct {
+	mu sync.Mutex
+}
+
+// NewConsoleView creates a new ConsoleView.
+func NewConsoleView() *ConsoleView {
+	return &ConsoleView{}
+}
+
+// ShowInfo displays an informational message on stdout.
 func (v *ConsoleView) ShowInfo(format string, args ...interface{}) {
-	v.infoColor.Println(fmt.Sprintf(format, args...))
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	fmt.Println(styleInfo.Render("ℹ " + fmt.Sprintf(format, args...)))
 }
 
-// ShowSuccess displays a success message
+// ShowSuccess displays a success message on stdout.
 func (v *ConsoleView) ShowSuccess(format string, args ...interface{}) {
-	v.successColor.Println(fmt.Sprintf(format, args...))
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	fmt.Println(styleSuccess.Render("✓ " + fmt.Sprintf(format, args...)))
 }
 
-// ShowError displays an error message
+// ShowError displays an error message on stderr.
 func (v *ConsoleView) ShowError(format string, args ...interface{}) {
-	v.errorColor.Println(fmt.Sprintf(format, args...))
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	fmt.Fprintln(os.Stderr, styleError.Render("✗ "+fmt.Sprintf(format, args...)))
 }
 
-// ShowWarning displays a warning message
+// ShowWarning displays a warning message on stdout.
 func (v *ConsoleView) ShowWarning(format string, args ...interface{}) {
-	v.warnColor.Println(fmt.Sprintf(format, args...))
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	fmt.Println(styleWarn.Render("⚠ " + fmt.Sprintf(format, args...)))
 }
 
-// ShowHeader displays a header
-func (v *ConsoleView) ShowHeader(title string) {
-	fmt.Println()
-	v.headerColor.Println("═══════════════════════════════════════════")
-	v.headerColor.Println("  " + title)
-	v.headerColor.Println("═══════════════════════════════════════════")
-	fmt.Println()
-}
-
-// ShowPair displays a subtitle pair info
+// ShowPair displays a subtitle pair inside a muted rounded-border box. Intended
+// for dry-run mode where no actual conversion is performed.
 func (v *ConsoleView) ShowPair(pair *model.SubtitlePair) {
-	fmt.Printf("  Video:    %s\n", filepath.Base(pair.VideoPath))
-	fmt.Printf("  Subtitle: %s\n", filepath.Base(pair.SubtitlePath))
-	fmt.Printf("  Output:   %s\n", filepath.Base(pair.OutputPath))
-	fmt.Printf("  Format:   %dx%d @ %.3f fps\n",
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
+	label := func(s string) string { return styleMuted.Render(s) }
+
+	content := fmt.Sprintf(
+		"%s %s\n%s %s\n%s %s\n%s %dx%d @ %.3f fps",
+		label("Video:   "), filepath.Base(pair.VideoPath),
+		label("Subtitle:"), filepath.Base(pair.SubtitlePath),
+		label("Output:  "), filepath.Base(pair.OutputPath),
+		label("Format:  "),
 		pair.Metadata.Width,
 		pair.Metadata.Height,
-		pair.Metadata.FrameRate)
-	fmt.Println()
+		pair.Metadata.FrameRate,
+	)
+
+	fmt.Println(styleMutedBox.Render(content))
 }
 
-// ShowProgress displays a progress message
-func (v *ConsoleView) ShowProgress(format string, args ...interface{}) {
-	fmt.Printf("  → %s\n", fmt.Sprintf(format, args...))
-}
+// ShowSummary displays the final conversion summary inside a rounded
+// indigo-bordered box. The caller is responsible for any exit-code logic
+// based on the failed count.
+func (v *ConsoleView) ShowSummary(succeeded, failed int, elapsed time.Duration) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
 
-// ShowSummary displays the final conversion summary
-func (v *ConsoleView) ShowSummary(succeeded, failed int, totalDuration float64) {
-	fmt.Println()
-	v.headerColor.Println("═══════════════════════════════════════════")
-	v.headerColor.Println("  CONVERSION SUMMARY")
-	v.headerColor.Println("═══════════════════════════════════════════")
-	fmt.Println()
-
-	if succeeded > 0 {
-		v.successColor.Printf("  ✓ Succeeded: %d\n", succeeded)
-	}
-	if failed > 0 {
-		v.errorColor.Printf("  ✗ Failed: %d\n", failed)
+	total := succeeded + failed
+	avgStr := "N/A"
+	if total > 0 {
+		avgStr = fmtDuration(elapsed / time.Duration(total))
 	}
 
-	fmt.Printf("\n  Total time: %.1f seconds\n", totalDuration)
-	fmt.Printf("  Average: %.1f seconds per file\n", totalDuration/float64(succeeded+failed))
-	fmt.Println()
+	succLine := fmt.Sprintf("%s  Succeeded: %s",
+		styleSuccess.Render("✓"),
+		styleSuccess.Render(fmt.Sprintf("%d", succeeded)),
+	)
+	failLine := fmt.Sprintf("%s  Failed:    %s",
+		styleError.Render("✗"),
+		styleError.Render(fmt.Sprintf("%d", failed)),
+	)
 
+	var statusLine string
 	if failed == 0 {
-		v.successColor.Println("  All conversions completed successfully!")
+		statusLine = styleSuccess.Render("✓ All conversions completed successfully!")
 	} else {
-		v.warnColor.Printf("  Completed with %d errors\n", failed)
-		os.Exit(1)
+		statusLine = styleWarn.Render(fmt.Sprintf("⚠  Completed with %d error(s)", failed))
 	}
-}
 
-// ShowUsage displays usage information
-func (v *ConsoleView) ShowUsage() {
-	v.ShowHeader("ASS to SUP Converter")
-	fmt.Println("Converts ASS subtitle files to Blu-ray PGS (.sup) format")
+	content := fmt.Sprintf(
+		"%s\n%s\n\n  Total time:   %s\n  Avg per file: %s\n\n%s",
+		succLine,
+		failLine,
+		fmtDuration(elapsed),
+		avgStr,
+		statusLine,
+	)
+
 	fmt.Println()
-	fmt.Println("Usage:")
-	fmt.Println("  ass2sup [options]")
-	fmt.Println()
-	fmt.Println("Options:")
-	fmt.Println("  -dir string        Input directory (default \".\")")
-	fmt.Println("  -spp2pgs string    Path to Spp2Pgs.exe (default \"Spp2Pgs.exe\")")
-	fmt.Println("  -ffprobe string    Path to ffprobe (default \"ffprobe\")")
-	fmt.Println("  -dry-run           Show what would be done without converting")
-	fmt.Println("  -force             Overwrite existing .sup files")
-	fmt.Println("  -workers int       Parallel conversions (default 1)")
-	fmt.Println("  -v                 Verbose output")
-	fmt.Println()
-	fmt.Println("Examples:")
-	fmt.Println("  ass2sup -dir=\"C:\\Videos\" -spp2pgs=\"Spp2Pgs.exe\"")
-	fmt.Println("  ass2sup -dir=\".\" -dry-run -v")
+	fmt.Println(styleIndigoBox.Render(content))
 	fmt.Println()
 }

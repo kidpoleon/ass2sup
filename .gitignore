@@ -1,53 +1,61 @@
-# Binaries for programs and plugins
+# ── Compiled binaries ────────────────────────────────────────────────────────
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
 
-# Test binary, built with `go test -c`
-*.test
+# Keep the embed directory (contains embedded Spp2Pgs PE binaries).
+# The binaries themselves (.exe/.dll) are still gitignored above — only the
+# directory is preserved so the package can compile when binaries are present.
+!embed/
+!embed/.gitkeep
 
-# Output of the go coverage tool
+# Keep the icon directory
+!icon/
+
+# ── Go toolchain ─────────────────────────────────────────────────────────────
+# Test binary
+*.test
+# Coverage output
 *.out
 coverage.html
-
-# Dependency directories
+# Workspace files
+go.work
+go.work.sum
+# Vendor directory
 vendor/
 
-# Go workspace file
-go.work
+# ── Windows PE resource ───────────────────────────────────────────────────────
+# goversioninfo generates resource.syso; commit it so builds without the tool
+# still embed the correct icon and version metadata.
+*.syso
+!resource.syso
 
-# IDE directories
+# ── Build artifacts ───────────────────────────────────────────────────────────
+bin/
+dist/
+build/
+
+# ── Conversion output ─────────────────────────────────────────────────────────
+*.sup
+
+# ── Editor / IDE ─────────────────────────────────────────────────────────────
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
+.editorconfig
 
-# OS files
+# ── OS ───────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 desktop.ini
+ehthumbs.db
 
-# Temporary files
+# ── Temp / logs ──────────────────────────────────────────────────────────────
 tmp/
 temp/
 *.tmp
 *.log
-
-# Build artifacts
-bin/
-dist/
-build/
-
-# Output files from conversions
-*.sup
-
-# Go resource files (generated during build)
-*.syso
-resource.syso
-
-# Don't ignore the embed directory - it contains embedded binaries
-!embed/
-!icon/
